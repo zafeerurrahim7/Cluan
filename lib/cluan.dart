@@ -7,8 +7,10 @@
 ///                LLM: I didnt use LLM for this class
 ///   Changes: Now instead of hard coded clues and answers it uses the database in supabase,
 ///            it converts answers to be uppercase when added.
+///            Added loadMine() and deleteMineAt() to handle the My Cluans tab.
 ///   Bugs: None known
 ///   Reflection: Moving to a DB helped me practice async code and model design.
+///               These changes further helped me practice handeling row level securities.
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,18 +25,24 @@ class Cluan {
   final String clue;
   final String answer;
   final DateTime date;
+  final String? userId;
 
   static const int clueLength = 150;
   static const int answerLength = 21;
 
   /// Constructor:
   /// Limits clue to 150 chars and answer to 21 chars.
-  Cluan({this.id, required String clue, required String answer, DateTime? date})
-    : clue = clue.length <= clueLength ? clue : clue.substring(0, clueLength),
-      answer = answer.length <= answerLength
-          ? answer
-          : answer.substring(0, answerLength),
-      date = date ?? DateTime.now();
+  Cluan({
+    this.id,
+    required String clue,
+    required String answer,
+    DateTime? date,
+    this.userId,
+  }) : clue = clue.length <= clueLength ? clue : clue.substring(0, clueLength),
+       answer = answer.length <= answerLength
+           ? answer
+           : answer.substring(0, answerLength),
+       date = date ?? DateTime.now();
 
   static const _weekdayFull = [
     'Monday',
@@ -68,6 +76,9 @@ class CluansModel extends ChangeNotifier {
   List<Cluan> get items => List.unmodifiable(_items);
   int get length => _items.length;
 
+  final List<Cluan> _mine = [];
+  List<Cluan> get mine => List.unmodifiable(_mine);
+
   /// Load all rows from Supabase
   Future<void> loadAll() async {
     final rows = await supabase
@@ -89,6 +100,39 @@ class CluansModel extends ChangeNotifier {
             clue: (m['clue'] ?? '') as String,
             answer: (m['answer'] ?? '') as String,
             date: dt,
+            userId: m['user_id'] as String?,
+          );
+        }),
+      );
+    notifyListeners();
+  }
+  
+  /// Load only the logged-in user's Cluans
+  Future<void> loadMine() async {
+    final uid = supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    final rows = await supabase
+        .from('cluans')
+        .select()
+        .eq('user_id', uid)
+        .order('created_at', ascending: false);
+
+    _mine
+      ..clear()
+      ..addAll(
+        (rows as List).map((r) {
+          final m = r as Map<String, dynamic>;
+          final created = m['created_at'];
+          final dt = created is String
+              ? DateTime.parse(created)
+              : (created is DateTime ? created : DateTime.now());
+          return Cluan(
+            id: m['id'] as int?,
+            clue: (m['clue'] ?? '') as String,
+            answer: (m['answer'] ?? '') as String,
+            date: dt,
+            userId: m['user_id'] as String?,
           );
         }),
       );
@@ -104,6 +148,9 @@ class CluansModel extends ChangeNotifier {
     final ans = answer.trim().toUpperCase();
     if (ans.length < 3) return false;
 
+    final uid = supabase.auth.currentUser?.id;
+    if (uid == null) return false;
+
     final safeClue = clue.length <= Cluan.clueLength
         ? clue
         : clue.substring(0, Cluan.clueLength);
@@ -115,6 +162,8 @@ class CluansModel extends ChangeNotifier {
     await supabase.from('cluans').insert({
       'clue': safeClue,
       'answer': safeAnswer,
+      'created_at': (date ?? DateTime.now()).toIso8601String(),
+      'user_id': uid,
     });
 
     await loadAll();
@@ -133,6 +182,20 @@ class CluansModel extends ChangeNotifier {
       _items.removeAt(index);
       notifyListeners();
     }
+  }
+  
+  /// Deletes a Cluan created by the logged in user from My Cluans.
+  /// RLS policies in Supabase ensure users can only delete their Cluan.
+  Future<void> deleteMineAt(int index) async {
+    if (index < 0 || index >= _mine.length) return;
+    final id = _mine[index].id;
+    if (id == null) return;
+    await supabase
+        .from('cluans')
+        .delete()
+        .eq('id', id); // RLS enforces ownership
+    await loadAll();
+    await loadMine();
   }
 
   /// Sorts list alphabetically by clue

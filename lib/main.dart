@@ -1,11 +1,16 @@
 ///   Author: Zafeer Ur Rahim
-///   Date: 14/10/2025
+///   Date: 11/11/2025
 ///   Description: Main entry for the Cluans app.
 ///                Sets up ChangeNotifierProvider at the top.
+///                Uses AuthGate to show Login or Home instantly on auth changes
+///                Hosts a 3-tab UI: All Cluans, My Cluans, Statistics
 ///                LLM: None
 ///   Changes: supabase connectivity  
+///            Added AuthGate as app home
 ///   Bugs: None known
 ///   Reflection: I like how using diferent classes made my build and main shorter.
+///               Overall, this lab showed me how a simple app can become more secure and dynamic
+///               once authentication and databases are linked together.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,6 +20,8 @@ import 'cluan.dart';
 import 'cluans_deck.dart';
 import 'add_cluan.dart';
 import 'stats.dart';
+import 'login_auth.dart';
+import 'my_cluans.dart';
 
 /// Function: main
 /// Starts the app with a ChangeNotifierProvider.
@@ -28,7 +35,7 @@ void main() async{
 
   runApp(
     ChangeNotifierProvider(
-      create: (_) => CluansModel()..loadAll(),
+      create: (_) => CluansModel()..loadAll()..loadMine(),
       child: const CluansApp(),
     ),
   );
@@ -43,8 +50,7 @@ class CluansApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       title: 'Cluans On The Move!',
-      //theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-      home:  HomeScreen(),
+      home:  AuthGate(),
     );
   }
 }
@@ -83,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Tab pages shown by the NavigationBar.
   final pages = const [
     CluansWidget(), 
-    AddCluanWidget(), 
+    MyCluansWidget(),
     StatisticsWidget(), 
   ];
   
@@ -96,8 +102,8 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: selectedIndex,
         onDestinationSelected: (position) => setState(() => selectedIndex = position),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.list), label: 'List'),
-          NavigationDestination(icon: Icon(Icons.add_circle), label: 'Add'),
+          NavigationDestination(icon: Icon(Icons.list), label: 'All Cluans'),
+          NavigationDestination(icon: Icon(Icons.person), label: 'My Cluans'),
           NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Stats'),
         ],
       ),
